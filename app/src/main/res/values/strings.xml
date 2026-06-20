@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI Grammar Keyboard</string>
+    <string name="ime_name">AI Grammar Keyboard</string>
+    <string name="ime_subtype_english">English</string>
+    <string name="message_hint">Type rough English here</string>
+    <string name="button_fix_grammar">Fix Grammar</string>
+    <string name="button_make_professional">Make Professional</string>
+    <string name="button_make_simple">Make Simple</string>
+    <string name="button_send_to_app">Send to App</string>
+    <string name="status_ready">Gemini is ready. Type a message, improve it, then send.</string>
+    <string name="status_loading">AI is working...</string>
+    <string name="status_done">Done. Review the text, then tap Send to App.</string>
+    <string name="status_sent">Sent to the current app.</string>
+    <string name="error_empty_text">Please type a message first.</string>
+    <string name="error_no_internet">No internet connection. Please try again.</string>
+    <string name="error_timeout">The AI request timed out. Please try again.</string>
+    <string name="error_unknown">Something went wrong. Please try again.</string>
+    <string name="settings_title">AI Grammar Keyboard Settings</string>
+    <string name="settings_summary">This first version uses Gemini only. The API key is compiled from local.properties or GitHub Actions secrets.</string>
+    <string name="api_key_status">API key status</string>
+    <string name="key_configured">configured</string>
+    <string name="key_missing">missing</string>
+</resources>
