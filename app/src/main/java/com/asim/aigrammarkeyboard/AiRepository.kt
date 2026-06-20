@@ -32,35 +32,54 @@ class AiRepository {
             throw IllegalStateException("Gemini API key is missing. Add GEMINI_API_KEY to local.properties.")
         }
 
+        val requestJson = createGeminiRequestBody(inputText, prompt)
+        var lastModelError: ApiException? = null
+
+        for (model in GEMINI_MODELS) {
+            val request = createGeminiRequest(apiKey, model, requestJson)
+            try {
+                return@withContext executeRequest(request) { json ->
+                    json.getJSONArray("candidates")
+                        .getJSONObject(0)
+                        .getJSONObject("content")
+                        .getJSONArray("parts")
+                        .getJSONObject(0)
+                        .getString("text")
+                }
+            } catch (error: ApiException) {
+                lastModelError = error
+                // Try the next current Gemini Flash model when this key cannot access one model name.
+                if (error.statusCode != 404) {
+                    throw error
+                }
+            }
+        }
+
+        throw lastModelError ?: IOException("No Gemini Flash model was available for this API key.")
+    }
+
+    private fun createGeminiRequestBody(inputText: String, prompt: String): String {
         val userText = "$prompt\n\nMessage:\n$inputText"
         val parts = JSONArray().put(JSONObject().put("text", userText))
         val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", parts))
 
-        val requestBody = JSONObject()
+        return JSONObject()
             .put("contents", contents)
             .put("generationConfig", JSONObject().put("temperature", 0.2))
             .toString()
-            .toRequestBody(jsonMediaType)
+    }
 
-        val url = GEMINI_URL.toHttpUrl()
+    private fun createGeminiRequest(apiKey: String, model: String, requestJson: String): Request {
+        val url = "$GEMINI_BASE_URL/$model:generateContent".toHttpUrl()
             .newBuilder()
             .addQueryParameter("key", apiKey)
             .build()
 
-        val request = Request.Builder()
+        return Request.Builder()
             .url(url)
             .addHeader("Content-Type", "application/json")
-            .post(requestBody)
+            .post(requestJson.toRequestBody(jsonMediaType))
             .build()
-
-        executeRequest(request) { json ->
-            json.getJSONArray("candidates")
-                .getJSONObject(0)
-                .getJSONObject("content")
-                .getJSONArray("parts")
-                .getJSONObject(0)
-                .getString("text")
-        }
     }
 
     private fun executeRequest(request: Request, parse: (JSONObject) -> String): String {
@@ -68,7 +87,7 @@ class AiRepository {
             val responseText = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val details = responseText.take(220).ifBlank { response.message }
-                throw IOException("API request failed (${response.code}): $details")
+                throw ApiException(response.code, "API request failed (${response.code}): $details")
             }
 
             val parsedText = try {
@@ -92,7 +111,16 @@ class AiRepository {
         const val PROMPT_MAKE_SIMPLE =
             "Rewrite this message in simple natural English. Keep the same meaning. Return only the improved message."
 
-        private const val GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        private const val GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+        private val GEMINI_MODELS = listOf(
+            "gemini-flash-latest",
+            "gemini-3.5-flash",
+            "gemini-2.5-flash"
+        )
     }
 }
+
+private class ApiException(
+    val statusCode: Int,
+    message: String
+) : IOException(message)
