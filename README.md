@@ -1,6 +1,8 @@
 # AI Grammar Keyboard
 
-AI Grammar Keyboard is a custom Android keyboard built with Kotlin and `InputMethodService`. It lets you type directly inside WhatsApp or another app, improve the current draft with Groq or Gemini, and replace the draft text in-place.
+AI Grammar Keyboard is a custom Android keyboard built with Kotlin and `InputMethodService`. It lets you type directly inside WhatsApp or another app, translate or correct the current draft with Groq or Gemini, and replace the draft text in-place.
+
+The current version is English-output only: rough English is corrected, and Urdu script or Roman Urdu is translated into clean English.
 
 ## Add API keys
 
@@ -74,7 +76,7 @@ Android will show a warning for any third-party keyboard. This project only send
 1. Open WhatsApp and tap a message field.
 2. Switch to "AI Grammar Keyboard" from the keyboard picker.
 3. Type normally using the dark keyboard.
-4. Tap `Fix`, `Pro`, or `Simple` to rewrite the current draft.
-5. English stays English, Urdu script stays Urdu script, and Roman Urdu stays Roman Urdu.
+4. Tap `Fix`, `Pro`, or `Simple`.
+5. The draft is replaced with English only. No detected-language label or explanation should be inserted.
 6. Review the updated draft in WhatsApp.
-7. Tap `Send` to send, or tap `Switch` to return to Samsung Keyboard.
+7. Tap `Send` to send, or tap the switch icon to return to Samsung Keyboard.

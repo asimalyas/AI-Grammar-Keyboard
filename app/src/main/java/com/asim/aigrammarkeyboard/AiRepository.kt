@@ -50,7 +50,7 @@ class AiRepository {
 
         val requestJson = JSONObject()
             .put("model", GROQ_MODEL)
-            .put("temperature", 0.2)
+            .put("temperature", 0)
             .put("messages", messages)
             .toString()
 
@@ -107,7 +107,7 @@ class AiRepository {
 
         return JSONObject()
             .put("contents", contents)
-            .put("generationConfig", JSONObject().put("temperature", 0.2))
+            .put("generationConfig", JSONObject().put("temperature", 0))
             .toString()
     }
 
@@ -133,7 +133,7 @@ class AiRepository {
             }
 
             val parsedText = try {
-                parse(JSONObject(responseText)).trim()
+                cleanAiOutput(parse(JSONObject(responseText)))
             } catch (error: JSONException) {
                 throw IOException("Could not read AI response.", error)
             }
@@ -145,16 +145,105 @@ class AiRepository {
         }
     }
 
+    private fun cleanAiOutput(rawText: String): String {
+        val lines = rawText
+            .replace("```", "")
+            .trim()
+            .trim('"', '\'')
+            .lines()
+            .map { it.trim().trim('"', '\'') }
+            .filter { it.isNotBlank() }
+
+        val cleanedLines = mutableListOf<String>()
+        var skipPossibleLanguageName = false
+
+        lines.forEach { line ->
+            val lower = line.lowercase(Locale.US)
+
+            if (lower.startsWith("detected language")) {
+                skipPossibleLanguageName = true
+                return@forEach
+            }
+
+            if (skipPossibleLanguageName && isLanguageName(lower)) {
+                skipPossibleLanguageName = false
+                return@forEach
+            }
+            skipPossibleLanguageName = false
+
+            val cleanedLine = removeAiLabel(line)
+            if (cleanedLine.isNotBlank()) {
+                cleanedLines.add(cleanedLine)
+            }
+        }
+
+        return cleanedLines
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .trim('"', '\'')
+    }
+
+    private fun isLanguageName(lowercaseLine: String): Boolean {
+        return lowercaseLine == "english" ||
+            lowercaseLine == "urdu" ||
+            lowercaseLine == "roman urdu" ||
+            lowercaseLine == "hindi" ||
+            lowercaseLine == "punjabi"
+    }
+
+    private fun removeAiLabel(line: String): String {
+        val prefixes = listOf(
+            "here is your corrected message:",
+            "here's your corrected message:",
+            "here is the corrected message:",
+            "here's the corrected message:",
+            "here is the translation:",
+            "here's the translation:",
+            "the corrected message is:",
+            "the corrected text is:",
+            "the message remains the same:",
+            "here is your corrected message",
+            "here's your corrected message",
+            "here is the corrected message",
+            "here's the corrected message",
+            "here is the translation",
+            "here's the translation",
+            "the corrected message is",
+            "the corrected text is",
+            "the message remains the same",
+            "corrected message:",
+            "corrected text:",
+            "english translation:",
+            "translation:",
+            "improved message:",
+            "rewritten message:",
+            "final message:",
+            "final answer:",
+            "english:",
+            "result:",
+            "output:"
+        )
+
+        val lower = line.lowercase(Locale.US)
+        val matchingPrefix = prefixes.firstOrNull { lower.startsWith(it) }
+        return if (matchingPrefix == null) {
+            line
+        } else {
+            line.substring(matchingPrefix.length).trim().trim('"', '\'')
+        }
+    }
+
     companion object {
-        private const val LANGUAGE_RULE =
-            "Detect whether the message is English, Urdu script, or Roman Urdu. Preserve the same language and script. Do not translate Roman Urdu into English or Urdu script. Return only the final message."
+        private const val ENGLISH_OUTPUT_RULE =
+            "You are an Android keyboard text transformer. Convert the user's draft into clear English only. If the draft is already English, correct spelling, grammar, punctuation, and sentence structure. If the draft is Urdu script, Roman Urdu, Hindi, or any other language, translate it into natural English. Never return Urdu or Roman Urdu. Do not add labels, headings, detected language, explanations, markdown, quotes, alternatives, or notes. Return only the final English message."
 
         const val PROMPT_FIX_GRAMMAR =
-            "$LANGUAGE_RULE Correct spelling, grammar, punctuation, and sentence structure. Keep the same meaning. Make the message natural and human."
+            "$ENGLISH_OUTPUT_RULE Make the message natural and human while keeping the same meaning."
         const val PROMPT_MAKE_PROFESSIONAL =
-            "$LANGUAGE_RULE Rewrite this message in a professional, respectful style. Keep the same meaning."
+            "$ENGLISH_OUTPUT_RULE Rewrite the message in professional, respectful English while keeping the same meaning."
         const val PROMPT_MAKE_SIMPLE =
-            "$LANGUAGE_RULE Rewrite this message in simple, natural language. Keep the same meaning."
+            "$ENGLISH_OUTPUT_RULE Rewrite the message in simple, natural English while keeping the same meaning."
 
         const val AI_PROVIDER_GROQ = "groq"
         const val AI_PROVIDER_GEMINI = "gemini"

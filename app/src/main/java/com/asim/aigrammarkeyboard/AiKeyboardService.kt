@@ -32,6 +32,7 @@ class AiKeyboardService : InputMethodService() {
     private val allButtons = mutableListOf<Button>()
     private val letterButtons = mutableListOf<Button>()
     private lateinit var aiRepository: AiRepository
+    private lateinit var statusRow: LinearLayout
     private lateinit var statusText: TextView
     private lateinit var progressBar: ProgressBar
     private var isShiftOn = false
@@ -48,7 +49,7 @@ class AiKeyboardService : InputMethodService() {
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(5), dp(4), dp(5), dp(6))
+            setPadding(dp(2), dp(2), dp(2), dp(4))
             setBackgroundColor(DARK_BACKGROUND)
             addView(createAiToolbar())
             addView(createStatusRow())
@@ -71,35 +72,44 @@ class AiKeyboardService : InputMethodService() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(1))
+
+            addView(createToolbarIcon("☺") {
+                showKeyboardPicker()
+            }, toolbarIconParams())
+            addView(createToolbarIcon("⚙") {
+                openSettings()
+            }, toolbarIconParams())
             addView(createToolbarButton(getString(R.string.button_fix_short)) {
                 improveCurrentDraft(AiRepository.PROMPT_FIX_GRAMMAR)
-            }, toolbarParams(1f))
+            }, toolbarParams(1.05f))
             addView(createToolbarButton(getString(R.string.button_pro_short)) {
                 improveCurrentDraft(AiRepository.PROMPT_MAKE_PROFESSIONAL)
-            }, toolbarParams(1f))
+            }, toolbarParams(1.05f))
             addView(createToolbarButton(getString(R.string.button_simple_short)) {
                 improveCurrentDraft(AiRepository.PROMPT_MAKE_SIMPLE)
-            }, toolbarParams(1.15f))
-            addView(createToolbarButton(getString(R.string.button_provider_groq)) {
-                openSettings()
-            }, toolbarParams(1f))
-            addView(createToolbarButton(getString(R.string.button_switch_short)) {
+            }, toolbarParams(1.25f))
+            addView(createToolbarIcon("⇄") {
                 showKeyboardPicker()
-            }, toolbarParams(1.1f))
+            }, toolbarIconParams())
+            addView(createToolbarIcon("⋯") {
+                openSettings()
+            }, toolbarIconParams())
         }
     }
 
     private fun createStatusRow(): View {
-        return LinearLayout(this).apply {
+        statusRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(1), 0, dp(2))
+            visibility = View.GONE
+            setPadding(dp(2), dp(1), dp(2), dp(2))
 
             progressBar = ProgressBar(this@AiKeyboardService).apply {
                 isIndeterminate = true
                 visibility = View.GONE
             }
-            addView(progressBar, LinearLayout.LayoutParams(dp(18), dp(18)))
+            addView(progressBar, LinearLayout.LayoutParams(dp(16), dp(16)))
 
             statusText = TextView(this@AiKeyboardService).apply {
                 textSize = 10f
@@ -107,14 +117,15 @@ class AiKeyboardService : InputMethodService() {
                 setSingleLine(true)
                 setPadding(dp(6), 0, 0, 0)
             }
-            addView(statusText, LinearLayout.LayoutParams(0, dp(20), 1f))
+            addView(statusText, LinearLayout.LayoutParams(0, dp(18), 1f))
         }
+        return statusRow
     }
 
     private fun addKeyboardRows(root: LinearLayout) {
         addKeyRow(root, listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"))
         addKeyRow(root, listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"))
-        addKeyRow(root, listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"), leftInsetWeight = 0.55f, rightInsetWeight = 0.55f)
+        addKeyRow(root, listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"), leftInsetWeight = 0.48f, rightInsetWeight = 0.48f)
         addSpecialLetterRow(root)
         addBottomRow(root)
     }
@@ -143,12 +154,8 @@ class AiKeyboardService : InputMethodService() {
         row.addView(createSpecialKey(getString(R.string.key_shift)) {
             isShiftOn = !isShiftOn
             refreshLetterLabels()
-            if (isShiftOn) {
-                setStatus(getString(R.string.status_shift_on), false)
-            } else {
-                setReadyStatus()
-            }
-        }, rowParams(1.25f))
+            hideStatus()
+        }, rowParams(1.15f))
 
         listOf("z", "x", "c", "v", "b", "n", "m").forEach { label ->
             row.addView(createLetterKey(label), rowParams())
@@ -156,7 +163,7 @@ class AiKeyboardService : InputMethodService() {
 
         row.addView(createSpecialKey(getString(R.string.key_backspace)) {
             currentInputConnection?.deleteSurroundingText(1, 0)
-        }, rowParams(1.25f))
+        }, rowParams(1.15f))
         root.addView(row)
     }
 
@@ -164,13 +171,13 @@ class AiKeyboardService : InputMethodService() {
         val row = keyboardRow()
         row.addView(createSpecialKey("!#1") {
             setStatus(getString(R.string.status_symbols_later), false)
-        }, rowParams(1.1f))
+        }, rowParams(1.15f))
         row.addView(createSpecialKey(",") {
             commitText(",")
         }, rowParams(0.85f))
         row.addView(createSpecialKey(getString(R.string.key_language)) {
             commitText(" ")
-        }, rowParams(3.25f))
+        }, rowParams(3.7f))
         row.addView(createSpecialKey(".") {
             commitText(".")
         }, rowParams(0.85f))
@@ -182,13 +189,39 @@ class AiKeyboardService : InputMethodService() {
         return Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 11f
+            textSize = 10f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             setPadding(0, 0, 0, 0)
+            minWidth = 0
+            minimumWidth = 0
             minHeight = 0
             minimumHeight = 0
-            background = stateDrawable(TOOLBAR_KEY, TOOLBAR_KEY_PRESSED, dp(16))
+            setIncludeFontPadding(false)
+            background = stateDrawable(TOOLBAR_KEY, TOOLBAR_KEY_PRESSED, dp(15))
+            backgroundTintList = null
+            setOnClickListener {
+                keyFeedback(this)
+                onClick()
+            }
+            allButtons.add(this)
+        }
+    }
+
+    private fun createToolbarIcon(label: String, onClick: () -> Unit): Button {
+        return Button(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = 15f
+            typeface = Typeface.DEFAULT
+            setTextColor(TOOLBAR_ICON_TEXT)
+            setPadding(0, 0, 0, 0)
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            minimumHeight = 0
+            setIncludeFontPadding(false)
+            background = stateDrawable(TOOLBAR_ICON_KEY, TOOLBAR_KEY_PRESSED, dp(15))
             backgroundTintList = null
             setOnClickListener {
                 keyFeedback(this)
@@ -218,8 +251,8 @@ class AiKeyboardService : InputMethodService() {
 
     private fun createSpecialKey(label: String, onClick: () -> Unit): Button {
         return createBaseKey(label).apply {
-            textSize = 14f
-            background = stateDrawable(SPECIAL_KEY, SPECIAL_KEY_PRESSED, dp(6))
+            textSize = 13f
+            background = stateDrawable(SPECIAL_KEY, SPECIAL_KEY_PRESSED, dp(4))
             backgroundTintList = null
             setOnClickListener {
                 keyFeedback(this)
@@ -251,14 +284,16 @@ class AiKeyboardService : InputMethodService() {
         return Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 20f
+            textSize = 19f
             typeface = Typeface.DEFAULT
             setTextColor(KEY_TEXT)
             setPadding(0, 0, 0, 0)
+            minWidth = 0
+            minimumWidth = 0
             minHeight = 0
             minimumHeight = 0
             setIncludeFontPadding(false)
-            background = stateDrawable(LETTER_KEY, LETTER_KEY_PRESSED, dp(6))
+            background = stateDrawable(LETTER_KEY, LETTER_KEY_PRESSED, dp(4))
             backgroundTintList = null
         }
     }
@@ -286,7 +321,7 @@ class AiKeyboardService : InputMethodService() {
                 aiRepository.rewrite(textToImprove, prompt)
             }.onSuccess { correctedText ->
                 replaceDraft(inputConnection, selectedText, beforeCursor, correctedText)
-                setStatus(getString(R.string.status_done_inline), false)
+                hideStatus()
             }.onFailure { error ->
                 setStatus(friendlyError(error), true)
             }
@@ -340,21 +375,27 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun setReadyStatus() {
-        setStatus(getString(R.string.status_ready, providerLabel()), false)
-    }
-
-    private fun providerLabel(): String {
-        return if (AiRepository.activeProvider() == AiRepository.AI_PROVIDER_GEMINI) "Gemini" else "Groq"
+        hideStatus()
     }
 
     private fun setLoading(isLoading: Boolean) {
         progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
+        if (isLoading) {
+            statusRow.visibility = View.VISIBLE
+        }
         allButtons.forEach { it.isEnabled = !isLoading }
     }
 
     private fun setStatus(message: String, isError: Boolean) {
         statusText.text = message
         statusText.setTextColor(if (isError) ERROR_TEXT else STATUS_TEXT)
+        statusRow.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
+    }
+
+    private fun hideStatus() {
+        progressBar.visibility = View.GONE
+        statusText.text = ""
+        statusRow.visibility = View.GONE
     }
 
     private fun friendlyError(error: Throwable): String {
@@ -378,14 +419,20 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun toolbarParams(weight: Float): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, dp(34), weight).apply {
+        return LinearLayout.LayoutParams(0, dp(30), weight).apply {
+            setMargins(dp(2), dp(2), dp(2), dp(2))
+        }
+    }
+
+    private fun toolbarIconParams(): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(0, dp(30), 0.68f).apply {
             setMargins(dp(2), dp(2), dp(2), dp(2))
         }
     }
 
     private fun rowParams(weight: Float = 1f): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, dp(38), weight).apply {
-            setMargins(dp(3), dp(3), dp(3), dp(3))
+        return LinearLayout.LayoutParams(0, dp(35), weight).apply {
+            setMargins(dp(2), dp(2), dp(2), dp(2))
         }
     }
 
@@ -413,13 +460,15 @@ class AiKeyboardService : InputMethodService() {
         private const val MAX_DRAFT_CHARS = 1000
         private val DARK_BACKGROUND = Color.parseColor("#050505")
         private val LETTER_KEY = Color.parseColor("#2A2A2A")
-        private val LETTER_KEY_PRESSED = Color.parseColor("#494949")
+        private val LETTER_KEY_PRESSED = Color.parseColor("#4A4A4A")
         private val SPECIAL_KEY = Color.parseColor("#171717")
-        private val SPECIAL_KEY_PRESSED = Color.parseColor("#383838")
+        private val SPECIAL_KEY_PRESSED = Color.parseColor("#3A3A3A")
         private val TOOLBAR_KEY = Color.parseColor("#252525")
+        private val TOOLBAR_ICON_KEY = Color.parseColor("#1F1F1F")
         private val TOOLBAR_KEY_PRESSED = Color.parseColor("#3F3F3F")
         private val DISABLED_KEY = Color.parseColor("#1B1B1B")
         private val KEY_TEXT = Color.parseColor("#F2F2F2")
+        private val TOOLBAR_ICON_TEXT = Color.parseColor("#CFCFCF")
         private val STATUS_TEXT = Color.parseColor("#BDBDBD")
         private val ERROR_TEXT = Color.parseColor("#FF8A80")
         private val SEND_TEXT = Color.parseColor("#4EA3FF")
