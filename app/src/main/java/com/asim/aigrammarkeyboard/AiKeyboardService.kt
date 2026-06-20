@@ -1,15 +1,16 @@
 package com.asim.aigrammarkeyboard
 
-import android.inputmethodservice.InputMethodService
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.text.InputType
+import android.inputmethodservice.InputMethodService
+import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -18,16 +19,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.Locale
 
 class AiKeyboardService : InputMethodService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val allButtons = mutableListOf<Button>()
+    private val letterButtons = mutableListOf<Button>()
     private lateinit var aiRepository: AiRepository
-    private lateinit var messageBox: EditText
     private lateinit var statusText: TextView
     private lateinit var progressBar: ProgressBar
-    private val buttonsToDisable = mutableListOf<Button>()
+    private var isShiftOn = false
+    private var currentImeOptions = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -35,67 +40,23 @@ class AiKeyboardService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        buttonsToDisable.clear()
+        allButtons.clear()
+        letterButtons.clear()
 
-        val root = LinearLayout(this).apply {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            setBackgroundColor(Color.WHITE)
+            setPadding(dp(8), dp(6), dp(8), dp(8))
+            setBackgroundColor(DARK_BACKGROUND)
+            addView(createAiToolbar())
+            addView(createStatusRow())
+            addKeyboardRows(this)
+            setReadyStatus()
         }
-
-        messageBox = EditText(this).apply {
-            hint = getString(R.string.message_hint)
-            inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            minLines = 2
-            maxLines = 4
-            setSingleLine(false)
-            textSize = 16f
-            setTextColor(Color.parseColor("#111827"))
-            setHintTextColor(Color.parseColor("#6B7280"))
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            background = roundedDrawable(Color.WHITE, Color.parseColor("#D1D5DB"), dp(10))
-            // The IME cannot open another soft keyboard, so this field is filled by our own keys.
-            showSoftInputOnFocus = false
-        }
-        root.addView(
-            messageBox,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(createStatusRow())
-        root.addView(createActionRow(
-            createActionButton(getString(R.string.button_fix_grammar)) {
-                improveText(AiRepository.PROMPT_FIX_GRAMMAR)
-            },
-            createActionButton(getString(R.string.button_make_professional)) {
-                improveText(AiRepository.PROMPT_MAKE_PROFESSIONAL)
-            }
-        ))
-        root.addView(createActionRow(
-            createActionButton(getString(R.string.button_make_simple)) {
-                improveText(AiRepository.PROMPT_MAKE_SIMPLE)
-            },
-            createActionButton(getString(R.string.button_send_to_app)) {
-                sendToCurrentApp()
-            }
-        ))
-
-        addKeyboardRows(root)
-        setReadyStatus()
-        messageBox.requestFocus()
-        return root
     }
 
-    override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
-        super.onStartInputView(info, restarting)
-        if (::messageBox.isInitialized) {
-            messageBox.requestFocus()
-        }
+    override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(attribute, restarting)
+        currentImeOptions = attribute?.imeOptions ?: 0
     }
 
     override fun onDestroy() {
@@ -103,189 +64,302 @@ class AiKeyboardService : InputMethodService() {
         super.onDestroy()
     }
 
+    private fun createAiToolbar(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(createToolbarButton(getString(R.string.button_fix_short)) {
+                improveCurrentDraft(AiRepository.PROMPT_FIX_GRAMMAR)
+            }, toolbarParams(1f))
+            addView(createToolbarButton(getString(R.string.button_pro_short)) {
+                improveCurrentDraft(AiRepository.PROMPT_MAKE_PROFESSIONAL)
+            }, toolbarParams(1f))
+            addView(createToolbarButton(getString(R.string.button_simple_short)) {
+                improveCurrentDraft(AiRepository.PROMPT_MAKE_SIMPLE)
+            }, toolbarParams(1.2f))
+            addView(createToolbarButton(getString(R.string.button_settings_short)) {
+                openSettings()
+            }, toolbarParams(1.35f))
+            addView(createToolbarButton(getString(R.string.button_switch_short)) {
+                showKeyboardPicker()
+            }, toolbarParams(1.25f))
+        }
+    }
+
     private fun createStatusRow(): View {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(6), 0, dp(4))
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(3), 0, dp(4))
 
             progressBar = ProgressBar(this@AiKeyboardService).apply {
                 isIndeterminate = true
                 visibility = View.GONE
             }
-            addView(progressBar, LinearLayout.LayoutParams(dp(24), dp(24)))
+            addView(progressBar, LinearLayout.LayoutParams(dp(20), dp(20)))
 
             statusText = TextView(this@AiKeyboardService).apply {
-                textSize = 12f
-                setTextColor(Color.parseColor("#374151"))
-                setPadding(dp(8), 0, 0, 0)
+                textSize = 11f
+                setTextColor(STATUS_TEXT)
+                setSingleLine(true)
+                setPadding(dp(7), 0, 0, 0)
             }
-            addView(
-                statusText,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            )
-        }
-    }
-
-    private fun createActionRow(left: Button, right: Button): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(left, weightedButtonParams())
-            addView(right, weightedButtonParams())
-        }
-    }
-
-    private fun createActionButton(label: String, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-            setOnClickListener { onClick() }
-            buttonsToDisable.add(this)
+            addView(statusText, LinearLayout.LayoutParams(0, dp(24), 1f))
         }
     }
 
     private fun addKeyboardRows(root: LinearLayout) {
+        addKeyRow(root, listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"))
         addKeyRow(root, listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"))
-        addKeyRow(root, listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"))
-        addKeyRow(root, listOf("z", "x", "c", "v", "b", "n", "m"))
-
-        val bottomRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(createKeyButton(",", ","), weightedKeyParams(0.8f))
-            addView(createKeyButton("Space", " "), weightedKeyParams(2.2f))
-            addView(createKeyButton(".", "."), weightedKeyParams(0.8f))
-            addView(createUtilityButton("Back") { deleteFromMessage() }, weightedKeyParams(1.2f))
-            addView(createUtilityButton("Clear") {
-                messageBox.text?.clear()
-                setReadyStatus()
-            }, weightedKeyParams(1.2f))
-        }
-        root.addView(bottomRow)
+        addKeyRow(root, listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"), leftInsetWeight = 0.5f, rightInsetWeight = 0.5f)
+        addSpecialLetterRow(root)
+        addBottomRow(root)
     }
 
-    private fun addKeyRow(root: LinearLayout, labels: List<String>) {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            labels.forEach { label ->
-                addView(createKeyButton(label, label), weightedKeyParams())
-            }
+    private fun addKeyRow(
+        root: LinearLayout,
+        labels: List<String>,
+        leftInsetWeight: Float = 0f,
+        rightInsetWeight: Float = 0f
+    ) {
+        val row = keyboardRow()
+        if (leftInsetWeight > 0f) {
+            row.addView(spacer(), rowParams(leftInsetWeight))
+        }
+        labels.forEach { label ->
+            row.addView(createLetterKey(label), rowParams())
+        }
+        if (rightInsetWeight > 0f) {
+            row.addView(spacer(), rowParams(rightInsetWeight))
         }
         root.addView(row)
     }
 
-    private fun createKeyButton(label: String, value: String): Button {
-        return createUtilityButton(label) {
-            appendToMessage(value)
+    private fun addSpecialLetterRow(root: LinearLayout) {
+        val row = keyboardRow()
+        row.addView(createSpecialKey(getString(R.string.key_shift)) {
+            isShiftOn = !isShiftOn
+            refreshLetterLabels()
+            setStatus(if (isShiftOn) getString(R.string.status_shift_on) else getString(R.string.status_ready), false)
+        }, rowParams(1.25f))
+
+        listOf("z", "x", "c", "v", "b", "n", "m").forEach { label ->
+            row.addView(createLetterKey(label), rowParams())
         }
+
+        row.addView(createSpecialKey(getString(R.string.key_backspace)) {
+            currentInputConnection?.deleteSurroundingText(1, 0)
+        }, rowParams(1.25f))
+        root.addView(row)
     }
 
-    private fun createUtilityButton(label: String, onClick: () -> Unit): Button {
+    private fun addBottomRow(root: LinearLayout) {
+        val row = keyboardRow()
+        row.addView(createSpecialKey("!#1") {
+            setStatus(getString(R.string.status_symbols_later), false)
+        }, rowParams(1.1f))
+        row.addView(createSpecialKey(",") {
+            commitText(",")
+        }, rowParams(0.9f))
+        row.addView(createSpecialKey(getString(R.string.key_language)) {
+            commitText(" ")
+        }, rowParams(3.2f))
+        row.addView(createSpecialKey(".") {
+            commitText(".")
+        }, rowParams(0.9f))
+        row.addView(createSendKey(), rowParams(1.35f))
+        root.addView(row)
+    }
+
+    private fun createToolbarButton(label: String, onClick: () -> Unit): Button {
         return Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 13f
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(0, 0, 0, 0)
             minHeight = 0
             minimumHeight = 0
-            setPadding(0, 0, 0, 0)
+            background = roundedDrawable(TOOLBAR_KEY, TOOLBAR_KEY, dp(14))
             setOnClickListener { onClick() }
-            buttonsToDisable.add(this)
+            allButtons.add(this)
         }
     }
 
-    private fun improveText(prompt: String) {
-        val roughText = messageBox.text?.toString()?.trim().orEmpty()
-        if (roughText.isBlank()) {
-            setStatus(getString(R.string.error_empty_text), isError = true)
+    private fun createLetterKey(label: String): Button {
+        return createBaseKey(label).apply {
+            tag = label
+            setOnClickListener {
+                val text = if (isShiftOn) label.uppercase(Locale.US) else label
+                commitText(text)
+                if (isShiftOn) {
+                    isShiftOn = false
+                    refreshLetterLabels()
+                    setReadyStatus()
+                }
+            }
+            letterButtons.add(this)
+            allButtons.add(this)
+        }
+    }
+
+    private fun createSpecialKey(label: String, onClick: () -> Unit): Button {
+        return createBaseKey(label).apply {
+            textSize = 14f
+            background = roundedDrawable(SPECIAL_KEY, SPECIAL_KEY, dp(7))
+            setOnClickListener { onClick() }
+            allButtons.add(this)
+        }
+    }
+
+    private fun createSendKey(): Button {
+        return createSpecialKey(getString(R.string.key_send)) {
+            val action = currentImeOptions and EditorInfo.IME_MASK_ACTION
+            if (action == EditorInfo.IME_ACTION_SEND ||
+                action == EditorInfo.IME_ACTION_DONE ||
+                action == EditorInfo.IME_ACTION_GO ||
+                action == EditorInfo.IME_ACTION_SEARCH
+            ) {
+                currentInputConnection?.performEditorAction(action)
+            } else {
+                commitText("\n")
+            }
+        }.apply {
+            setTextColor(SEND_TEXT)
+            typeface = Typeface.DEFAULT_BOLD
+        }
+    }
+
+    private fun createBaseKey(label: String): Button {
+        return Button(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = 20f
+            typeface = Typeface.DEFAULT
+            setTextColor(KEY_TEXT)
+            setPadding(0, 0, 0, 0)
+            minHeight = 0
+            minimumHeight = 0
+            setIncludeFontPadding(false)
+            background = roundedDrawable(LETTER_KEY, LETTER_KEY, dp(7))
+        }
+    }
+
+    private fun improveCurrentDraft(prompt: String) {
+        val inputConnection = currentInputConnection ?: run {
+            setStatus(getString(R.string.error_no_input_connection), true)
+            return
+        }
+
+        val selectedText = inputConnection.getSelectedText(0)?.toString().orEmpty()
+        val beforeCursor = inputConnection.getTextBeforeCursor(MAX_DRAFT_CHARS, 0)?.toString().orEmpty()
+        val textToImprove = selectedText.ifBlank { beforeCursor }.trim()
+
+        if (textToImprove.isBlank()) {
+            setStatus(getString(R.string.error_empty_text), true)
             return
         }
 
         setLoading(true)
-        setStatus(getString(R.string.status_loading), isError = false)
+        setStatus(getString(R.string.status_loading), false)
 
         serviceScope.launch {
             runCatching {
-                aiRepository.rewrite(roughText, prompt)
+                aiRepository.rewrite(textToImprove, prompt)
             }.onSuccess { correctedText ->
-                messageBox.setText(correctedText)
-                messageBox.setSelection(correctedText.length)
-                setStatus(getString(R.string.status_done), isError = false)
+                replaceDraft(inputConnection, selectedText, beforeCursor, correctedText)
+                setStatus(getString(R.string.status_done_inline), false)
             }.onFailure { error ->
-                setStatus(friendlyError(error), isError = true)
+                setStatus(friendlyError(error), true)
             }
             setLoading(false)
         }
     }
 
-    private fun sendToCurrentApp() {
-        val textToSend = messageBox.text?.toString()?.trim().orEmpty()
-        if (textToSend.isBlank()) {
-            setStatus(getString(R.string.error_empty_text), isError = true)
+    private fun replaceDraft(
+        inputConnection: InputConnection,
+        selectedText: String,
+        beforeCursor: String,
+        correctedText: String
+    ) {
+        if (selectedText.isNotBlank()) {
+            inputConnection.commitText(correctedText, 1)
             return
         }
 
-        currentInputConnection?.commitText(textToSend, 1)
-        messageBox.text?.clear()
-        setStatus(getString(R.string.status_sent), isError = false)
+        if (beforeCursor.isNotEmpty()) {
+            inputConnection.deleteSurroundingText(beforeCursor.length, 0)
+        }
+        inputConnection.commitText(correctedText, 1)
     }
 
-    private fun appendToMessage(value: String) {
-        val editable = messageBox.text ?: return
-        val start = messageBox.selectionStart.coerceAtLeast(0)
-        val end = messageBox.selectionEnd.coerceAtLeast(0)
-        val replaceStart = minOf(start, end)
-        val replaceEnd = maxOf(start, end)
-        editable.replace(replaceStart, replaceEnd, value)
-        messageBox.setSelection(replaceStart + value.length)
+    private fun commitText(text: String) {
+        currentInputConnection?.commitText(text, 1)
     }
 
-    private fun deleteFromMessage() {
-        val editable = messageBox.text ?: return
-        val start = messageBox.selectionStart.coerceAtLeast(0)
-        val end = messageBox.selectionEnd.coerceAtLeast(0)
-        val deleteStart = minOf(start, end)
-        val deleteEnd = maxOf(start, end)
+    private fun openSettings() {
+        val intent = Intent(this, SettingsActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+    }
 
-        when {
-            deleteStart != deleteEnd -> editable.delete(deleteStart, deleteEnd)
-            deleteStart > 0 -> editable.delete(deleteStart - 1, deleteStart)
+    private fun showKeyboardPicker() {
+        val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        inputMethodManager.showInputMethodPicker()
+    }
+
+    private fun refreshLetterLabels() {
+        letterButtons.forEach { button ->
+            val label = button.tag as? String ?: return@forEach
+            button.text = if (isShiftOn) label.uppercase(Locale.US) else label
         }
     }
 
     private fun setReadyStatus() {
-        setStatus(getString(R.string.status_ready), isError = false)
+        setStatus(getString(R.string.status_ready), false)
     }
 
     private fun setLoading(isLoading: Boolean) {
         progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-        buttonsToDisable.forEach { it.isEnabled = !isLoading }
+        allButtons.forEach { it.isEnabled = !isLoading }
     }
 
     private fun setStatus(message: String, isError: Boolean) {
         statusText.text = message
-        statusText.setTextColor(
-            if (isError) Color.parseColor("#B91C1C") else Color.parseColor("#374151")
-        )
+        statusText.setTextColor(if (isError) ERROR_TEXT else STATUS_TEXT)
     }
 
     private fun friendlyError(error: Throwable): String {
         return when (error) {
             is UnknownHostException -> getString(R.string.error_no_internet)
             is SocketTimeoutException -> getString(R.string.error_timeout)
+            is IOException -> getString(R.string.error_api_short)
             else -> error.message ?: getString(R.string.error_unknown)
         }
     }
 
-    private fun weightedButtonParams(): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+    private fun keyboardRow(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+    }
+
+    private fun spacer(): View {
+        return View(this)
+    }
+
+    private fun toolbarParams(weight: Float): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(0, dp(38), weight).apply {
             setMargins(dp(2), dp(2), dp(2), dp(2))
         }
     }
 
-    private fun weightedKeyParams(weight: Float = 1f): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, dp(38), weight).apply {
-            setMargins(dp(1), dp(1), dp(1), dp(1))
+    private fun rowParams(weight: Float = 1f): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(0, dp(42), weight).apply {
+            setMargins(dp(3), dp(3), dp(3), dp(3))
         }
     }
 
@@ -300,6 +374,16 @@ class AiKeyboardService : InputMethodService() {
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
+
+    companion object {
+        private const val MAX_DRAFT_CHARS = 1000
+        private val DARK_BACKGROUND = Color.parseColor("#111111")
+        private val LETTER_KEY = Color.parseColor("#2B2B2B")
+        private val SPECIAL_KEY = Color.parseColor("#202124")
+        private val TOOLBAR_KEY = Color.parseColor("#323232")
+        private val KEY_TEXT = Color.parseColor("#F5F5F5")
+        private val STATUS_TEXT = Color.parseColor("#BDBDBD")
+        private val ERROR_TEXT = Color.parseColor("#FF8A80")
+        private val SEND_TEXT = Color.parseColor("#4EA3FF")
+    }
 }
-
-
