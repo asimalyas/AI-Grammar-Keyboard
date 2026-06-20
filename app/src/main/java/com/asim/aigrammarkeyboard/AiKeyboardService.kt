@@ -4,8 +4,11 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.inputmethodservice.InputMethodService
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.SoundEffectConstants
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -45,7 +48,7 @@ class AiKeyboardService : InputMethodService() {
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(8))
+            setPadding(dp(5), dp(4), dp(5), dp(6))
             setBackgroundColor(DARK_BACKGROUND)
             addView(createAiToolbar())
             addView(createStatusRow())
@@ -76,13 +79,13 @@ class AiKeyboardService : InputMethodService() {
             }, toolbarParams(1f))
             addView(createToolbarButton(getString(R.string.button_simple_short)) {
                 improveCurrentDraft(AiRepository.PROMPT_MAKE_SIMPLE)
-            }, toolbarParams(1.2f))
-            addView(createToolbarButton(getString(R.string.button_settings_short)) {
+            }, toolbarParams(1.15f))
+            addView(createToolbarButton(getString(R.string.button_provider_groq)) {
                 openSettings()
-            }, toolbarParams(1.35f))
+            }, toolbarParams(1f))
             addView(createToolbarButton(getString(R.string.button_switch_short)) {
                 showKeyboardPicker()
-            }, toolbarParams(1.25f))
+            }, toolbarParams(1.1f))
         }
     }
 
@@ -90,28 +93,28 @@ class AiKeyboardService : InputMethodService() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(3), 0, dp(4))
+            setPadding(0, dp(1), 0, dp(2))
 
             progressBar = ProgressBar(this@AiKeyboardService).apply {
                 isIndeterminate = true
                 visibility = View.GONE
             }
-            addView(progressBar, LinearLayout.LayoutParams(dp(20), dp(20)))
+            addView(progressBar, LinearLayout.LayoutParams(dp(18), dp(18)))
 
             statusText = TextView(this@AiKeyboardService).apply {
-                textSize = 11f
+                textSize = 10f
                 setTextColor(STATUS_TEXT)
                 setSingleLine(true)
-                setPadding(dp(7), 0, 0, 0)
+                setPadding(dp(6), 0, 0, 0)
             }
-            addView(statusText, LinearLayout.LayoutParams(0, dp(24), 1f))
+            addView(statusText, LinearLayout.LayoutParams(0, dp(20), 1f))
         }
     }
 
     private fun addKeyboardRows(root: LinearLayout) {
         addKeyRow(root, listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"))
         addKeyRow(root, listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"))
-        addKeyRow(root, listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"), leftInsetWeight = 0.5f, rightInsetWeight = 0.5f)
+        addKeyRow(root, listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"), leftInsetWeight = 0.55f, rightInsetWeight = 0.55f)
         addSpecialLetterRow(root)
         addBottomRow(root)
     }
@@ -140,7 +143,11 @@ class AiKeyboardService : InputMethodService() {
         row.addView(createSpecialKey(getString(R.string.key_shift)) {
             isShiftOn = !isShiftOn
             refreshLetterLabels()
-            setStatus(if (isShiftOn) getString(R.string.status_shift_on) else getString(R.string.status_ready), false)
+            if (isShiftOn) {
+                setStatus(getString(R.string.status_shift_on), false)
+            } else {
+                setReadyStatus()
+            }
         }, rowParams(1.25f))
 
         listOf("z", "x", "c", "v", "b", "n", "m").forEach { label ->
@@ -160,14 +167,14 @@ class AiKeyboardService : InputMethodService() {
         }, rowParams(1.1f))
         row.addView(createSpecialKey(",") {
             commitText(",")
-        }, rowParams(0.9f))
+        }, rowParams(0.85f))
         row.addView(createSpecialKey(getString(R.string.key_language)) {
             commitText(" ")
-        }, rowParams(3.2f))
+        }, rowParams(3.25f))
         row.addView(createSpecialKey(".") {
             commitText(".")
-        }, rowParams(0.9f))
-        row.addView(createSendKey(), rowParams(1.35f))
+        }, rowParams(0.85f))
+        row.addView(createSendKey(), rowParams(1.25f))
         root.addView(row)
     }
 
@@ -181,8 +188,12 @@ class AiKeyboardService : InputMethodService() {
             setPadding(0, 0, 0, 0)
             minHeight = 0
             minimumHeight = 0
-            background = roundedDrawable(TOOLBAR_KEY, TOOLBAR_KEY, dp(14))
-            setOnClickListener { onClick() }
+            background = stateDrawable(TOOLBAR_KEY, TOOLBAR_KEY_PRESSED, dp(16))
+            backgroundTintList = null
+            setOnClickListener {
+                keyFeedback(this)
+                onClick()
+            }
             allButtons.add(this)
         }
     }
@@ -191,6 +202,7 @@ class AiKeyboardService : InputMethodService() {
         return createBaseKey(label).apply {
             tag = label
             setOnClickListener {
+                keyFeedback(this)
                 val text = if (isShiftOn) label.uppercase(Locale.US) else label
                 commitText(text)
                 if (isShiftOn) {
@@ -207,8 +219,12 @@ class AiKeyboardService : InputMethodService() {
     private fun createSpecialKey(label: String, onClick: () -> Unit): Button {
         return createBaseKey(label).apply {
             textSize = 14f
-            background = roundedDrawable(SPECIAL_KEY, SPECIAL_KEY, dp(7))
-            setOnClickListener { onClick() }
+            background = stateDrawable(SPECIAL_KEY, SPECIAL_KEY_PRESSED, dp(6))
+            backgroundTintList = null
+            setOnClickListener {
+                keyFeedback(this)
+                onClick()
+            }
             allButtons.add(this)
         }
     }
@@ -242,7 +258,8 @@ class AiKeyboardService : InputMethodService() {
             minHeight = 0
             minimumHeight = 0
             setIncludeFontPadding(false)
-            background = roundedDrawable(LETTER_KEY, LETTER_KEY, dp(7))
+            background = stateDrawable(LETTER_KEY, LETTER_KEY_PRESSED, dp(6))
+            backgroundTintList = null
         }
     }
 
@@ -298,6 +315,11 @@ class AiKeyboardService : InputMethodService() {
         currentInputConnection?.commitText(text, 1)
     }
 
+    private fun keyFeedback(view: View) {
+        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        view.playSoundEffect(SoundEffectConstants.CLICK)
+    }
+
     private fun openSettings() {
         val intent = Intent(this, SettingsActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -318,7 +340,11 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun setReadyStatus() {
-        setStatus(getString(R.string.status_ready), false)
+        setStatus(getString(R.string.status_ready, providerLabel()), false)
+    }
+
+    private fun providerLabel(): String {
+        return if (AiRepository.activeProvider() == AiRepository.AI_PROVIDER_GEMINI) "Gemini" else "Groq"
     }
 
     private fun setLoading(isLoading: Boolean) {
@@ -352,14 +378,22 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun toolbarParams(weight: Float): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, dp(38), weight).apply {
+        return LinearLayout.LayoutParams(0, dp(34), weight).apply {
             setMargins(dp(2), dp(2), dp(2), dp(2))
         }
     }
 
     private fun rowParams(weight: Float = 1f): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, dp(42), weight).apply {
+        return LinearLayout.LayoutParams(0, dp(38), weight).apply {
             setMargins(dp(3), dp(3), dp(3), dp(3))
+        }
+    }
+
+    private fun stateDrawable(normalColor: Int, pressedColor: Int, radius: Int): StateListDrawable {
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), roundedDrawable(pressedColor, pressedColor, radius))
+            addState(intArrayOf(android.R.attr.state_enabled), roundedDrawable(normalColor, normalColor, radius))
+            addState(intArrayOf(), roundedDrawable(DISABLED_KEY, DISABLED_KEY, radius))
         }
     }
 
@@ -377,11 +411,15 @@ class AiKeyboardService : InputMethodService() {
 
     companion object {
         private const val MAX_DRAFT_CHARS = 1000
-        private val DARK_BACKGROUND = Color.parseColor("#111111")
-        private val LETTER_KEY = Color.parseColor("#2B2B2B")
-        private val SPECIAL_KEY = Color.parseColor("#202124")
-        private val TOOLBAR_KEY = Color.parseColor("#323232")
-        private val KEY_TEXT = Color.parseColor("#F5F5F5")
+        private val DARK_BACKGROUND = Color.parseColor("#050505")
+        private val LETTER_KEY = Color.parseColor("#2A2A2A")
+        private val LETTER_KEY_PRESSED = Color.parseColor("#494949")
+        private val SPECIAL_KEY = Color.parseColor("#171717")
+        private val SPECIAL_KEY_PRESSED = Color.parseColor("#383838")
+        private val TOOLBAR_KEY = Color.parseColor("#252525")
+        private val TOOLBAR_KEY_PRESSED = Color.parseColor("#3F3F3F")
+        private val DISABLED_KEY = Color.parseColor("#1B1B1B")
+        private val KEY_TEXT = Color.parseColor("#F2F2F2")
         private val STATUS_TEXT = Color.parseColor("#BDBDBD")
         private val ERROR_TEXT = Color.parseColor("#FF8A80")
         private val SEND_TEXT = Color.parseColor("#4EA3FF")

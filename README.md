@@ -1,16 +1,18 @@
 # AI Grammar Keyboard
 
-AI Grammar Keyboard is a custom Android keyboard built with Kotlin and `InputMethodService`. It lets you type directly inside WhatsApp or another app, improve the current draft with Gemini, and replace the draft text in-place.
+AI Grammar Keyboard is a custom Android keyboard built with Kotlin and `InputMethodService`. It lets you type directly inside WhatsApp or another app, improve the current draft with Groq or Gemini, and replace the draft text in-place.
 
-## Add Gemini API key
+## Add API keys
 
 Copy `local.properties.example` to `local.properties` in the project root:
 
 ```properties
+GROQ_API_KEY=your_groq_key_here
 GEMINI_API_KEY=your_gemini_key_here
+AI_PROVIDER=groq
 ```
 
-Real API keys should only go in `local.properties` or GitHub Actions secrets, never in source code. `local.properties` is ignored by git.
+`AI_PROVIDER` can be `groq` or `gemini`. Groq is the default. Real API keys should only go in `local.properties` or GitHub Actions secrets, never in source code. `local.properties` is ignored by git.
 
 ## Build APK without Android Studio
 
@@ -38,11 +40,14 @@ The first build downloads Gradle and Android dependencies. You need a JDK and An
 
 1. Push this project to GitHub.
 2. Open the repository settings.
-3. Add this repository secret:
+3. Add these repository secrets:
+   - `GROQ_API_KEY`
    - `GEMINI_API_KEY`
-4. Go to the Actions tab.
-5. Run the "Build Android APK" workflow.
-6. Download the uploaded `ai-grammar-keyboard-debug-apk` artifact.
+   - `AI_PROVIDER`
+4. Set `AI_PROVIDER` to `groq` unless you want Gemini.
+5. Go to the Actions tab.
+6. Run the "Build Android APK" workflow.
+7. Download the uploaded `ai-grammar-keyboard-debug-apk` artifact.
 
 ## Install APK on your phone
 
@@ -62,7 +67,7 @@ On your Android phone:
 Settings -> System / General Management -> Keyboard -> On-screen keyboard -> Manage keyboards -> Enable AI Grammar Keyboard
 ```
 
-Android will show a warning for any third-party keyboard. This project only sends text to Gemini when you tap one of the AI buttons.
+Android will show a warning for any third-party keyboard. This project only sends text to the selected AI provider when you tap one of the AI buttons.
 
 ## Use in WhatsApp
 
@@ -70,5 +75,6 @@ Android will show a warning for any third-party keyboard. This project only send
 2. Switch to "AI Grammar Keyboard" from the keyboard picker.
 3. Type normally using the dark keyboard.
 4. Tap `Fix`, `Pro`, or `Simple` to rewrite the current draft.
-5. Review the updated draft in WhatsApp.
-6. Tap `Send` to send, or tap `Switch` to return to Samsung Keyboard.
+5. English stays English, Urdu script stays Urdu script, and Roman Urdu stays Roman Urdu.
+6. Review the updated draft in WhatsApp.
+7. Tap `Send` to send, or tap `Switch` to return to Samsung Keyboard.

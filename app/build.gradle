@@ -36,7 +36,9 @@ android {
         versionCode 1
         versionName "1.0"
 
+        buildConfigField "String", "GROQ_API_KEY", buildConfigString(readLocalProperty("GROQ_API_KEY"))
         buildConfigField "String", "GEMINI_API_KEY", buildConfigString(readLocalProperty("GEMINI_API_KEY"))
+        buildConfigField "String", "AI_PROVIDER", buildConfigString(readLocalProperty("AI_PROVIDER", "groq"))
     }
 
     buildFeatures {
